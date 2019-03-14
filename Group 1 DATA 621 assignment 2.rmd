@@ -1,0 +1,301 @@
+---
+title: "DATA 621 Assignment 2"
+author: "Joby John, Zachary Herold, Jun Pan"
+date: "March 11, 2019"
+output: html_document
+---
+
+Set working environment
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(car)
+library(caret)
+library(corrplot)
+library(data.table)
+library(dplyr)
+library(geoR)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(knitr)
+library(MASS)
+library(naniar)
+library(nortest)
+library(psych)
+library(testthat)
+library(visdat)
+library(pROC)
+```
+
+
+
+Load data
+
+```{r}
+output <- read.csv("https://raw.githubusercontent.com/johnpannyc/group-1-data-621-assignment-2/master/classification-output-data.csv")
+```
+
+
+1. DATA EXPLORATION
+```{r}
+glimpse(output)
+```
+
+classification-output-data.csv file contains 181 observations of 11 variables. Three variables will be considered for this report -  class (actual class for the observation), scored.class (predicted class for the observation), and scored.probability (predicted probability of success for the observation).
+
+
+```{r}
+summary(output)
+```
+
+
+
+```{r}
+boxplot(output,xlab="variables")
+```
+
+Check missing data
+```{r}
+vis_miss(output)
+```
+No missing data in the file.
+
+
+Use the table() function to get the raw confusion matrix for this scored dataset (method 1)
+```{r}
+cf <- table(output[,9:10])
+cf
+```
+
+
+Looking at the matrix above, rows represent actual class values of 0 or 1. Columns represent predicted class values of 0 or 1. So in the top left corner 119 is the number of observations where the class was correctly predicted to be 0. The top right corner shows 5 observations where the class of 0 was incorrectly predicted as 1. Similarly, we have 30 observations of class 1 incorrectedly predicted as class 0 and 27 observations of class 1 correctly predicted.
+
+Assuming that 0 is a negative class and 1 is a positive class we have:
+
+TN = 119 
+FP = 5
+FN = 30 
+TN = 27 
+
+
+Use the table() function to get the raw confusion matrix for this scored dataset (method 2)
+```{r}
+data <- read.csv("https://raw.githubusercontent.com/johnpannyc/group-1-data-621-assignment-2/master/classification-output-data.csv")
+cmatrix <-  table(data$class, data$scored.class)
+cmatrix
+```
+
+```{r}
+Accuracy <- function(df)
+{
+  names    = c("class", "scored.class")
+  cmatrix  = table(df[, names])
+  accuracy = (cmatrix[2,2] + cmatrix[1,1]) / (cmatrix[2,2] + cmatrix[1,2] + cmatrix[1,1] + cmatrix[2,1])
+  return(round(accuracy, 2))
+}
+```
+
+```{r}
+Accuracy(output)
+```
+
+
+```{r}
+Classification_error_rate <- function(df)
+{
+  names    = c("class", "scored.class")
+  cmatrix  = table(df[, names])
+  classification_error_rate = (cmatrix[1,2] + cmatrix[2,1]) / (cmatrix[2,2] + cmatrix[1,2] + cmatrix[1,1] + cmatrix[2,1])
+  return(round(classification_error_rate, 2))
+  
+}
+```
+
+```{r}
+Classification_error_rate(output)
+```
+
+
+
+```{r}
+Precision <- function(df)
+{
+  names    = c("class", "scored.class")
+  cmatrix  = table(df[, names])
+  precision = (cmatrix[2,2] / (cmatrix[2,2] + cmatrix[1,2]))
+  return(round(precision, 2))
+  
+}
+
+```
+
+```{r}
+Precision(output)
+```
+
+
+
+```{r}
+Sensitivity <- function(df)
+{
+  names    = c("class", "scored.class")
+  cmatrix  = table(df[, names])
+  sensitivity = cmatrix[2,2] / (cmatrix[2,2] + cmatrix[2,1])
+  return(round(sensitivity, 2))
+  
+}
+```
+
+```{r}
+Sensitivity(output)
+```
+
+
+
+```{r}
+Specificity <- function(df)
+{
+  names    = c("class", "scored.class")
+  cmatrix  = table(df[, names])
+  specificity =  cmatrix[1,1] / (cmatrix[1,1] + cmatrix[1,2])
+  return(round(specificity, 2))
+  
+}
+```
+
+```{r}
+Specificity(output)
+```
+
+
+
+```{r}
+F1_Score <- function(df)
+{
+  names    = c("class", "scored.class")
+  cmatrix  = table(df[, names])
+  precision = Precision(df)
+  sensitivity = Sensitivity(df)
+  f1_score =  (2 * precision * sensitivity) /(precision + sensitivity)
+  
+  return(round(f1_score, 2))
+}
+```
+
+```{r}
+F1_Score(output)
+```
+
+10.Manually create ROC curve
+```{r}
+manual_roc <- function(labels, scores){
+  labels <- labels[order(scores, decreasing=TRUE)]
+  TPR=cumsum(labels)/sum(labels)
+  FPR=cumsum(!labels)/sum(!labels)
+  df<- data.frame(TPR,FPR)
+  dFPR <- c(diff(FPR), 0)
+  dTPR <- c(diff(TPR), 0)
+  auc <-sum(TPR * dFPR) + sum(dTPR * dFPR)/2
+  return(c(df,auc))
+}
+
+
+
+rc_curve <- manual_roc(output$class,output$scored.probability)
+
+plot(rc_curve[[1]])
+auc <- rc_curve[[2]]
+
+
+```
+
+
+
+
+
+
+
+
+## Q11 - Using the functions to generate the classification metrics
+All metrics were provided as they were calculated. As we will see below using built-in functions makes life easier.
+
+```{r}
+Accuracy(output)
+Classification_error_rate(output)
+Precision(output)
+Sensitivity(output)
+Specificity(output)
+F1_Score(output)
+```
+
+
+## Q12 - Investigating the caret package
+```{r}
+if (!"caret" %in% installed.packages()) install.packages(caret)
+require(caret)
+
+ls(pos = "package:caret")
+
+?sensitivity
+?confusionMatrix
+?precision
+```
+
+## Transposing the table so that the actual referenced value (i.e., truth, "class") is in columns, and the predicted measurement system (i.e. "scored.class")  is in rows
+```{r}
+df <- data[c("class","scored.class")]
+cmatrix.t <- t(table(df))
+cmatrix.t
+str(cmatrix.t)
+```
+## Comparing the home-made functions and the caret package ones
+```{r}
+sens.caret <- round(sensitivity(cmatrix.t, positive = rownames(cmatrix)[2]),2)
+sens.caret
+identical(Sensitivity(data), sens.caret)
+
+spec.caret <- round(specificity(cmatrix.t, negative = rownames(cmatrix)[1]),2)
+spec.caret
+identical(Specificity(data), spec.caret)
+
+cMat.caret <- confusionMatrix(cmatrix.t, positive = "1")
+cMat.caret 
+
+str(cMat.caret) 
+
+prec.caret <- round(precision(cmatrix.t, relevant = "1"),2)
+prec.caret
+identical(Precision(data), prec.caret)
+
+acc.caret <- round(cMat.caret$overall[1],2)
+acc.caret
+identical(Accuracy(data), acc.caret)  ## same value, but fail to match with identical function
+```
+
+
+13. pROC Package
+Let us try the pROC package.
+```{r}
+roc(output$class, output$scored.probability, levels=c(0,1), percent=TRUE, plot=TRUE, ci=TRUE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
